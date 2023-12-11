@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import Callable
 
 
 class ILog(ABC):
@@ -18,3 +20,6 @@ class ILog(ABC):
                          If False, shut down immediately.
         """
         pass
+
+
+Clock = Callable[[], datetime]
