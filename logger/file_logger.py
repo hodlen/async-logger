@@ -31,13 +31,16 @@ class FileLogger(ILog):
         logging_dir: Path,
         logic_clock: Optional[Clock] = None,
         buffer_size: int = 1024,
+        log_frequency_ms: int = 100,
+        clock_override: Optional[Clock] = None,
     ):
         super().__init__()
         self._logging_dir = logging_dir
         self._logging_dir.mkdir(parents=True, exist_ok=True)
         self._msg_queue: Queue[Tuple[str, datetime]] = Queue(maxsize=buffer_size)
-        if logic_clock is not None:
-            self._clock = logic_clock
+        self._log_frequency_ms = log_frequency_ms
+        if clock_override is not None:
+            self._clock = clock_override
         self._thread = threading.Thread(target=self._loop_save, daemon=True)
         self._thread.start()
 
@@ -61,13 +64,13 @@ class FileLogger(ILog):
         while not self._stopped or (
             self._stopped and not self._force_stop and not self._msg_queue.empty()
         ):
-            pending_msg = (
+            pending_msg = [
                 self._msg_queue.get_nowait() for _ in range(self._msg_queue.qsize())
-            )
+            ]
             for msg in pending_msg:
                 self._write_to_file(msg)
             time.sleep(
-                0.1
+                self._log_frequency_ms / 1000
             )  # Avoids tight loop, adjustable based on expected log frequency
         if self._current_log_file is not None:
             self._current_log_file.close()
