@@ -1,16 +1,19 @@
-import asyncio
 from datetime import date, datetime
-from collections import deque
 from io import TextIOWrapper
 from pathlib import Path
+from queue import Queue
 import sys
+import threading
+import time
 from typing import Deque, Optional, Tuple
 from logger.base import Clock, ILog
 
 
 class FileLogger(ILog):
     _stopped = False
-    _msg_queue: Deque[Tuple[str, datetime]] = deque()
+    _force_stop = False
+
+    _msg_queue: Queue[Tuple[str, datetime]] = Queue()
     _logging_dir: Path
     _last_log_date: Optional[date] = None
     _current_log_file: Optional[TextIOWrapper] = None
@@ -22,45 +25,42 @@ class FileLogger(ILog):
         self._logging_dir.mkdir(parents=True, exist_ok=True)
         if logic_clock is not None:
             self._clock = logic_clock
-        self._task = asyncio.run_coroutine_threadsafe(
-            self._loop_save(), asyncio.get_event_loop()
-        )
-        self._task.add_done_callback(
-            lambda _: self._current_log_file.close()
-            if self._current_log_file is not None
-            else None
-        )
+        self._thread = threading.Thread(target=self._loop_save, daemon=True)
+        self._thread.start()
 
     def write(self, log_message: str):
         if self._stopped:
             raise RuntimeError("Cannot write to a stopped logger.")
-        self._msg_queue.append((log_message, self._clock()))
+        self._msg_queue.put_nowait((log_message, self._clock()))
 
     def stop(self, graceful: bool = True):
         self._stopped = True
         if graceful:
-            self._task.result()
+            self._thread.join()
         else:
-            self._task.cancel()
+            self._force_stop = True
 
-    async def _loop_save(self):
-        # This loop will run until the logger is stopped and the queue is empty
-        while not self._stopped or (self._stopped and self._msg_queue):
-            print(f"Queue size: {len(self._msg_queue)}", file=sys.stdout, flush=True)
-            if self._msg_queue:
-                msg = self._msg_queue.popleft()
-                await self._write_to_file(msg)
-            await asyncio.sleep(
+    def _loop_save(self):
+        # This loop will run until the logger is stopped and the queue is empty (except for force stop)
+        while not self._stopped or (
+            self._stopped and not self._force_stop and not self._msg_queue.empty()
+        ):
+            pending_msg = (
+                self._msg_queue.get_nowait() for _ in range(self._msg_queue.qsize())
+            )
+            for msg in pending_msg:
+                self._write_to_file(msg)
+            time.sleep(
                 0.1
             )  # Avoids tight loop, adjustable based on expected log frequency
-        return None
+        if self._current_log_file is not None:
+            self._current_log_file.close()
 
-    async def _write_to_file(self, timed_msg: Tuple[str, datetime]):
+    def _write_to_file(self, timed_msg: Tuple[str, datetime]):
         message, time = timed_msg
         log_file = self._get_file_handle(time)
         try:
             log_file.write(message + "\n")
-            print(f"Logged: {message}", file=sys.stdout, flush=True)
         except IOError as e:
             print(e, file=sys.stderr, flush=True)
 

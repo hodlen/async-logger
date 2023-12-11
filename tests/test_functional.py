@@ -1,5 +1,8 @@
 from datetime import datetime
+from os import system
 from pathlib import Path
+
+import pytest
 
 from logger import FileLogger
 
@@ -7,6 +10,7 @@ from logger import FileLogger
 log_dir = Path("/tmp/async-logs")
 mock_date = 1
 mock_clock = lambda: datetime(2021, 1, mock_date)
+system(f"rm -rf {log_dir}")
 
 
 def test_write_stop_ok():
