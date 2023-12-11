@@ -5,7 +5,7 @@ from typing import Callable
 
 class ILog(ABC):
     @abstractmethod
-    async def write(self, log_message: str):
+    def write(self, log_message: str):
         """
         Asynchronously writes a log message to the log.
         :param log_message: The message to be logged.
