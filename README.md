@@ -34,7 +34,17 @@ logger.write("Sample log message")
 logger.stop(graceful=True)
 ```
 
+## Testing (on \*nix)
+
+```bash
+./self_test.sh
+```
+
 ## Notes
 
 - **Threading vs. asyncio:** Chosen for compatibility with synchronous environments, avoiding the complexities of mixing sync and async code.
 - **Performance Considerations:** Batch processing in threading reduces overhead, making it suitable for high-load scenarios.
+
+```
+
+```
