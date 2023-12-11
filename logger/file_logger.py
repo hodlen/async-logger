@@ -9,20 +9,33 @@ from typing import Deque, Optional, Tuple
 from logger.base import Clock, ILog
 
 
+def _on_message_drop(msg: str, cause: Optional[Exception] = None):
+    print(
+        f"Message {msg} was dropped." + (" " + str(cause) if cause else ""),
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 class FileLogger(ILog):
     _stopped = False
     _force_stop = False
 
-    _msg_queue: Queue[Tuple[str, datetime]] = Queue()
     _logging_dir: Path
     _last_log_date: Optional[date] = None
     _current_log_file: Optional[TextIOWrapper] = None
     _clock: Clock = datetime.now
 
-    def __init__(self, logging_dir: Path, logic_clock: Optional[Clock] = None):
+    def __init__(
+        self,
+        logging_dir: Path,
+        logic_clock: Optional[Clock] = None,
+        buffer_size: int = 1024,
+    ):
         super().__init__()
         self._logging_dir = logging_dir
         self._logging_dir.mkdir(parents=True, exist_ok=True)
+        self._msg_queue: Queue[Tuple[str, datetime]] = Queue(maxsize=buffer_size)
         if logic_clock is not None:
             self._clock = logic_clock
         self._thread = threading.Thread(target=self._loop_save, daemon=True)
@@ -30,8 +43,11 @@ class FileLogger(ILog):
 
     def write(self, log_message: str):
         if self._stopped:
-            raise RuntimeError("Cannot write to a stopped logger.")
-        self._msg_queue.put_nowait((log_message, self._clock()))
+            _on_message_drop(log_message)
+        try:
+            self._msg_queue.put_nowait((log_message, self._clock()))
+        except Exception as e:
+            _on_message_drop(log_message, e)
 
     def stop(self, graceful: bool = True):
         self._stopped = True
@@ -41,7 +57,7 @@ class FileLogger(ILog):
             self._force_stop = True
 
     def _loop_save(self):
-        # This loop will run until the logger is stopped and the queue is empty (except for force stop)
+        """This loop will run until the logger is stopped and the queue is empty (except for force stop)"""
         while not self._stopped or (
             self._stopped and not self._force_stop and not self._msg_queue.empty()
         ):
@@ -64,8 +80,11 @@ class FileLogger(ILog):
         except IOError as e:
             print(e, file=sys.stderr, flush=True)
 
-    # Assumes time is ever-increasing
     def _get_file_handle(self, time: datetime) -> TextIOWrapper:
+        """
+        Returns the file handle for the given time, creating a new file if necessary.
+        Assmues time is ever-increasing.
+        """
         if (
             self._current_log_file is None
             or self._last_log_date is None
