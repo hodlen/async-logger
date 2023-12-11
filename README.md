@@ -16,6 +16,7 @@ async-logger is a Python logging module designed for asynchronous logging. It le
 - **Threading:** A daemon thread is used for log processing, separating the logging concern from the main application flow.
 - **Batched Log Processing:** Handles all messages in the queue at once, minimizing thread context-switching.
 - **Error Handling:** Logs file writing errors to `sys.stderr`, ensuring application continuity.
+- **Performance tuning:** The queue size and batch processing interval can be tuned to optimize performance under different workloads.
 
 ## Usage
 
